@@ -3,7 +3,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Response,
+    Security,
+    status,
+)
 from fastapi.security import (
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
@@ -33,6 +40,7 @@ oauth2_scheme = OAuth2PasswordBearer(
 class Token(BaseModel):
     access_token: str
     token_type: str
+    expiration_time: datetime
 
 
 class TokenData(BaseModel):
@@ -73,11 +81,11 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         expire = datetime.now(UTC) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return encoded_jwt, expire
 
 
 async def get_current_user(
-    security_scopes: SecurityScopes, token: Annotated[str, Depends(oauth2_scheme)]
+        security_scopes: SecurityScopes, token: Annotated[str, Depends(oauth2_scheme)]
 ):
     if security_scopes.scopes:
         authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
@@ -111,7 +119,7 @@ async def get_current_user(
 
 
 async def get_current_active_user(
-    current_user: Annotated[User, Security(get_current_user, scopes=["me"])],
+        current_user: Annotated[User, Security(get_current_user, scopes=["me"])],
 ):
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
@@ -120,7 +128,8 @@ async def get_current_active_user(
 
 @router.post("/token")
 async def login_for_access_token(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+        response: Response,
+        form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     user = await authenticate_user(form_data.username, form_data.password)
     if not user:
@@ -134,20 +143,21 @@ async def login_for_access_token(
         data={"sub": user.username, "scopes": form_data.scopes},
         expires_delta=access_token_expires,
     )
-    return Token(access_token=access_token, token_type="bearer")
+    response.set_cookie(key="auth_token", value=access_token)
+    return Token(access_token=access_token[0], token_type="bearer", expiration_time=access_token[1])
 
 
 @router.get("/user", response_model=UserRead)
 async def get_current_active_user_from_token(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+        current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     return current_user
 
 
 @router.post("/user", response_model=UserRead)
 async def register_user(
-    user: UserCreate,
-    session: AsyncSession = Depends(get_db_session),
+        user: UserCreate,
+        session: AsyncSession = Depends(get_db_session),
 ):
     new_user = User(
         username=user.username,

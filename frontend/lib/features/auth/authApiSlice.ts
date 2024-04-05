@@ -1,15 +1,7 @@
 // Need to use the React-specific entry point to import `createApi`
 import {createApi, fetchBaseQuery} from "@reduxjs/toolkit/query/react";
-
-export interface getTokenResponse {
-    "access_token": string,
-    "token_type": string
-}
-
-interface useAuthData {
-    username?: string,
-    password?: string
-}
+import {getTokenApiResponse} from "@/lib/features/auth/types";
+import {inputLoginFormType} from "@/app/login/types";
 
 
 // Define a service using a base URL and expected endpoints
@@ -22,7 +14,7 @@ export const authApiSlice = createApi({
         // Supply generics for the return type (in this case `QuotesApiResponse`)
         // and the expected query argument. If there is no argument, use `void`
         // for the argument type instead.
-        getToken: build.query<getTokenResponse, useAuthData>({
+        getToken: build.query<getTokenApiResponse, inputLoginFormType>({
             query: (authData) => ({
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
